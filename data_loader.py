@@ -4,6 +4,7 @@
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
+import numpy as np
 
 def load_and_process_data(file_path, input_features, target_variables):
     """
@@ -16,7 +17,7 @@ def load_and_process_data(file_path, input_features, target_variables):
         target_variables (list): List of target column names (1 or 2 targets).
 
     Returns:
-        dict: A dictionary containing train and test sets for features and targets.
+        tuple: X_train, X_test, y_train (2D array), y_test (2D array)
     """
     # Load the dataset from the Parquet file
     df = pd.read_parquet(file_path)
@@ -25,24 +26,14 @@ def load_and_process_data(file_path, input_features, target_variables):
     X = df[input_features].values
 
     # Prepare target vectors based on the provided target variables
-    y_targets = [df[target].values for target in target_variables]
+    y_targets = np.column_stack([df[target].values for target in target_variables])
 
     # Split the dataset into train and test sets (80% train, 20% test)
-    data_dict = {'X_train': None, 'X_test': None}
-    for i, y in enumerate(y_targets):
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
-        # Store each target's train and test sets in the dictionary
-        data_dict[f'y_target_{i+1}_train'] = y_train
-        data_dict[f'y_target_{i+1}_test'] = y_test
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_targets, test_size=0.2, random_state=42
+    )
 
-        # Store feature train and test sets (same for all targets)
-        if data_dict['X_train'] is None:
-            data_dict['X_train'] = X_train
-            data_dict['X_test'] = X_test
-
-    return data_dict
+    return X_train, X_test, y_train, y_test
 
 if __name__ == '__main__':
     # Example usage
@@ -55,10 +46,9 @@ if __name__ == '__main__':
     target_variables = ['delta_soc_real', 'plugin_duration_hr']  # Use 1 or 2 targets
 
     file_path = 'your_dataset.parquet'
-    data = load_and_process_data(file_path, input_features, target_variables)
+    X_train, X_test, y_train, y_test = load_and_process_data(file_path, input_features, target_variables)
 
     # Print the shapes of the datasets
     print("Training set shapes:")
-    print(f"X_train: {data['X_train'].shape}")
-    for i in range(len(target_variables)):
-        print(f"y_target_{i+1}_train: {data[f'y_target_{i+1}_train'].shape}")
+    print(f"X_train: {X_train.shape}, y_train: {y_train.shape}")
+    print(f"X_test: {X_test.shape}, y_test: {y_test.shape}")
