@@ -1,18 +1,21 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+import pytorch_lightning as pl
 
-class FullyConnectedBeforeResNet(nn.Module):
-    def __init__(self, input_size, resnet_input_channels=3, num_outputs=1):
+class FullyConnectedBeforeResNet(pl.LightningModule):
+    def __init__(self, input_size, resnet_input_channels=3, num_outputs=1, learning_rate=0.001):
         super(FullyConnectedBeforeResNet, self).__init__()
         
-        # Define hardcoded fully connected layers before ResNet
+        self.learning_rate = learning_rate
+
+        # Define fully connected layers with hardcoded dimensions before ResNet
         self.fc_layers = nn.Sequential(
-            nn.Linear(input_size, 256),  # First fully connected layer (hardcoded to 256 units)
+            nn.Linear(input_size, 256),  # Hardcoded to 256 units
             nn.ReLU(),
-            nn.Linear(256, 128),         # Second fully connected layer (hardcoded to 128 units)
+            nn.Linear(256, 128),         # Hardcoded to 128 units
             nn.ReLU(),
-            nn.Linear(128, resnet_input_channels * 64 * 64),  # Final layer before ResNet input
+            nn.Linear(128, resnet_input_channels * 64 * 64),  # Reshape to feed into ResNet (hardcoded for 64x64 image size)
             nn.ReLU()
         )
         
@@ -37,12 +40,37 @@ class FullyConnectedBeforeResNet(nn.Module):
         x = self.resnet(x)
         return x
 
-# Example usage
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self.forward(x)
+        loss = nn.MSELoss()(y_hat, y)
+        self.log('train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self.forward(x)
+        loss = nn.MSELoss()(y_hat, y)
+        self.log('val_loss', loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        return optimizer
+
+# Example usage with PyTorch Lightning
 model = FullyConnectedBeforeResNet(input_size=100, resnet_input_channels=3, num_outputs=1)
 
-# Example input (batch size = 8, input size = 100)
-x = torch.randn(8, 100)  # Adjust input size based on your actual input dimensions
-output = model(x)
+# Initialize PyTorch Lightning Trainer
+trainer = pl.Trainer(max_epochs=10, gpus=1 if torch.cuda.is_available() else 0)
 
-# Print output shape (should be [8, 1] for regression)
-print(output.shape)
+# Dummy data for testing
+x = torch.randn(8, 100)  # 8 samples, 100 features each
+y = torch.randn(8, 1)    # 8 samples, 1 target each
+
+# Dummy dataset and dataloader
+train_dataset = torch.utils.data.TensorDataset(x, y)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=4)
+
+# Train the model
+trainer.fit(model, train_loader)
