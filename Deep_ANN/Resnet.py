@@ -74,3 +74,45 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=4)
 
 # Train the model
 trainer.fit(model, train_loader)
+
+
+class ResNetForRegression(pl.LightningModule):
+    def __init__(self, input_channels=3, num_outputs=1, learning_rate=0.001):
+        super(ResNetForRegression, self).__init__()
+        
+        self.learning_rate = learning_rate
+
+        # Load a pretrained ResNet model (e.g., ResNet18)
+        self.resnet = models.resnet18(pretrained=True)
+
+        # Modify the input layer of ResNet if input_channels is different from the default (3 channels for RGB images)
+        if input_channels != 3:
+            self.resnet.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+        # Replace the final fully connected layer for regression
+        num_ftrs = self.resnet.fc.in_features
+        self.resnet.fc = nn.Linear(num_ftrs, num_outputs)  # Set to 1 output for a single regression target
+
+    def forward(self, x):
+        # Pass the input through ResNet
+        x = self.resnet(x)
+        return x
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self.forward(x)
+        loss = nn.MSELoss()(y_hat, y)
+        self.log('train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self.forward(x)
+        loss = nn.MSELoss()(y_hat, y)
+        self.log('val_loss', loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        return optimizer
+
