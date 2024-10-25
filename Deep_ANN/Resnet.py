@@ -116,3 +116,75 @@ class ResNetForRegression(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         return optimizer
 
+
+class ResNetForTabularRegression(pl.LightningModule):
+    def __init__(self, input_dim, learning_rate=1e-3):
+        super(ResNetForTabularRegression, self).__init__()
+        
+        # Initialize with input dimension and learning rate
+        self.learning_rate = learning_rate
+        
+        # Load a pre-trained ResNet and customize it for non-image data
+        self.resnet = models.resnet18(pretrained=True)
+        
+        # Replace initial convolution and pooling layers with dense layers for tabular data
+        self.fc1 = nn.Linear(input_dim, 64)  # Adjust based on input dimension
+        self.fc2 = nn.Linear(64, 64)
+        
+        # Replace ResNet layers with custom linear layers and skip connections
+        self.resnet.layer1 = self._make_layer(64, 2)
+        self.resnet.layer2 = self._make_layer(128, 2)
+        self.resnet.layer3 = self._make_layer(256, 2)
+        self.resnet.layer4 = self._make_layer(512, 2)
+        
+        # Final fully connected layer for regression output
+        self.fc_out = nn.Linear(512, 1)  # Single output for regression
+        
+    def _make_layer(self, out_channels, blocks):
+        # Define custom dense layers for residual blocks
+        layers = []
+        for _ in range(blocks):
+            layers.append(nn.Linear(out_channels, out_channels))
+            layers.append(nn.ReLU(inplace=True))
+        return nn.Sequential(*layers)
+    
+    def forward(self, x):
+        # Pass input through custom dense layers instead of convolutions
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
+        
+        # Pass through the modified ResNet layers
+        x = self.resnet.layer1(x)
+        x = self.resnet.layer2(x)
+        x = self.resnet.layer3(x)
+        x = self.resnet.layer4(x)
+        
+        # Flatten and pass through the final fully connected layer
+        x = torch.flatten(x, 1)
+        x = self.fc_out(x)  # No activation for regression output
+        
+        return x
+    
+    def training_step(self, batch, batch_idx):
+        # Extract data and labels from batch
+        x, y = batch
+        # Forward pass
+        y_hat = self(x)
+        # Compute Mean Squared Error (MSE) loss
+        loss = nn.functional.mse_loss(y_hat, y)
+        self.log("train_loss", loss)
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        # Extract data and labels from batch
+        x, y = batch
+        # Forward pass
+        y_hat = self(x)
+        # Compute Mean Squared Error (MSE) loss
+        val_loss = nn.functional.mse_loss(y_hat, y)
+        self.log("val_loss", val_loss)
+        return val_loss
+
+    def configure_optimizers(self):
+        # Set up the optimizer
+        return optim.Adam(self.parameters(), lr=self.learning_rate)
